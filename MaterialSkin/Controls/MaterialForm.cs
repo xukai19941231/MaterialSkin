@@ -22,6 +22,12 @@
         [Browsable(false)]
         public MouseState MouseState { get; set; }
 
+        public override string Text
+        {
+            get { return base.Text; }
+            set { base.Text = value; Invalidate(); }
+        }
+
         public new FormBorderStyle FormBorderStyle
         {
             get { return base.FormBorderStyle; }
@@ -146,9 +152,11 @@
             XOver,
             MaxOver,
             MinOver,
+            DrawerOver,
             XDown,
             MaxDown,
             MinDown,
+            DrawerDown,
             None
         }
 
@@ -158,6 +166,7 @@
         private Rectangle _maxButtonBounds;
         private Rectangle _xButtonBounds;
         private Rectangle _actionBarBounds;
+        private Rectangle _drawerButtonBounds;
 
         public Rectangle UserArea
         {
@@ -181,6 +190,7 @@
             DrawerIsOpen = false;
             DrawerShowIconsWhenHidden = false;
             DrawerAutoHide = true;
+            DrawerAutoShow = false;
             DrawerIndicatorWidth = 0;
             DrawerHighlightWithAccent = true;
             DrawerBackgroundWithAccent = false;
@@ -190,7 +200,9 @@
             DoubleBuffered = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
 
-            // This enables the form to trigger the MouseMove event even when mouse is over another control
+            Padding = new Padding(3, 3, 3, 3);      //Keep space for resize by mouse
+
+           // This enables the form to trigger the MouseMove event even when mouse is over another control
             Application.AddMessageFilter(new MouseMessageFilter());
             MouseMessageFilter.MouseMove += OnGlobalMouseMove;
 
@@ -231,8 +243,35 @@
         [Category("Drawer")]
         public int DrawerWidth { get; set; }
 
+        private bool _drawerAutoHide;
         [Category("Drawer")]
-        public bool DrawerAutoHide { get; set; }
+        public bool DrawerAutoHide 
+        {
+            get
+            {
+                return _drawerAutoHide;
+            }
+            set
+            {
+                _drawerAutoHide = value;
+                drawerControl.AutoHide = _drawerAutoHide;
+            }
+        }
+
+        private bool _drawerAutoShow;
+        [Category("Drawer")]
+        public bool DrawerAutoShow 
+        {
+            get
+            {
+                return _drawerAutoShow;
+            }
+            set
+            {
+                _drawerAutoShow = value;
+                drawerControl.AutoShow = _drawerAutoShow;
+            }
+        }
 
         [Category("Drawer")]
         public int DrawerIndicatorWidth { get; set; }
@@ -349,6 +388,22 @@
             int H = Size.Height - _statusBarBounds.Height - _actionBarBounds.Height;
             int Y = Location.Y + _statusBarBounds.Height + _actionBarBounds.Height;
 
+            // Overlay Form definitions
+            drawerOverlay.BackColor = Color.Black;
+            drawerOverlay.Opacity = 0;
+            drawerOverlay.MinimizeBox = false;
+            drawerOverlay.MaximizeBox = false;
+            drawerOverlay.Text = "";
+            drawerOverlay.ShowIcon = false;
+            drawerOverlay.ControlBox = false;
+            drawerOverlay.FormBorderStyle = FormBorderStyle.None;
+            drawerOverlay.Visible = true;
+            drawerOverlay.Size = new Size(Size.Width, H);
+            drawerOverlay.Location = new Point(Location.X, Y);
+            drawerOverlay.ShowInTaskbar = false;
+            drawerOverlay.Owner = this;
+            drawerOverlay.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
+
             // Drawer Form definitions
             drawerForm.BackColor = Color.LimeGreen;
             drawerForm.TransparencyKey = Color.LimeGreen;
@@ -372,10 +427,12 @@
             drawerControl.Anchor = (AnchorStyles.Top | AnchorStyles.Bottom);
             drawerControl.BaseTabControl = DrawerTabControl;
             drawerControl.ShowIconsWhenHidden = true;
+
             // Init Options
             drawerControl.IsOpen = DrawerIsOpen;
             drawerControl.ShowIconsWhenHidden = DrawerShowIconsWhenHidden;
             drawerControl.AutoHide = DrawerAutoHide;
+            drawerControl.AutoShow = DrawerAutoShow;
             drawerControl.IndicatorWidth = DrawerIndicatorWidth;
             drawerControl.HighlightWithAccent = DrawerHighlightWithAccent;
             drawerControl.BackgroundWithAccent = DrawerBackgroundWithAccent;
@@ -389,22 +446,6 @@
             {
                 drawerForm.Refresh();
             };
-
-            // Overlay Form definitions
-            drawerOverlay.BackColor = Color.Black;
-            drawerOverlay.Opacity = 0;
-            drawerOverlay.MinimizeBox = false;
-            drawerOverlay.MaximizeBox = false;
-            drawerOverlay.Text = "";
-            drawerOverlay.ShowIcon = false;
-            drawerOverlay.ControlBox = false;
-            drawerOverlay.FormBorderStyle = FormBorderStyle.None;
-            drawerOverlay.Visible = true;
-            drawerOverlay.Size = new Size(Size.Width, H);
-            drawerOverlay.Location = new Point(Location.X, Y);
-            drawerOverlay.ShowInTaskbar = false;
-            drawerOverlay.Owner = this;
-            drawerOverlay.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
 
             // Visible, Resize and move events
             VisibleChanged += (sender, e) =>
@@ -680,6 +721,8 @@
                     _buttonState = ButtonState.MaxDown;
                 else if (ControlBox && _xButtonBounds.Contains(e.Location))
                     _buttonState = ButtonState.XDown;
+                else if (_drawerButtonBounds.Contains(e.Location))
+                    _buttonState = ButtonState.DrawerDown;
                 else
                     _buttonState = ButtonState.None;
             }
@@ -713,8 +756,14 @@
                     if (oldState == ButtonState.XDown && up)
                         Close();
                 }
+                else if (_drawerButtonBounds.Contains(e.Location))
+                {
+                    _buttonState = ButtonState.DrawerOver;
+                }
                 else
+                {
                     _buttonState = ButtonState.None;
+                }
             }
 
             if (oldState != _buttonState)
@@ -799,6 +848,7 @@
             _xButtonBounds = new Rectangle((Width) - STATUS_BAR_BUTTON_WIDTH, 0, STATUS_BAR_BUTTON_WIDTH, STATUS_BAR_HEIGHT);
             _statusBarBounds = new Rectangle(0, 0, Width, STATUS_BAR_HEIGHT);
             _actionBarBounds = new Rectangle(0, STATUS_BAR_HEIGHT, Width, ACTION_BAR_HEIGHT);
+            _drawerButtonBounds = new Rectangle(SkinManager.FORM_PADDING / 2, STATUS_BAR_HEIGHT, 24 + SkinManager.FORM_PADDING + SkinManager.FORM_PADDING / 2, ACTION_BAR_HEIGHT);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -807,8 +857,11 @@
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
             g.Clear(SkinManager.BackdropColor);
-            g.FillRectangle(SkinManager.ColorScheme.DarkPrimaryBrush, _statusBarBounds);
-            g.FillRectangle(SkinManager.ColorScheme.PrimaryBrush, _actionBarBounds);
+            if (ControlBox == true)
+            {
+                g.FillRectangle(SkinManager.ColorScheme.DarkPrimaryBrush, _statusBarBounds);
+                g.FillRectangle(SkinManager.ColorScheme.PrimaryBrush, _actionBarBounds);
+            }
 
             //Draw border
             using (var borderPen = new Pen(SkinManager.DividersColor, 1))
@@ -838,10 +891,10 @@
                 g.FillRectangle(downBrush, _maxButtonBounds);
 
             if (_buttonState == ButtonState.XOver && ControlBox)
-                g.FillRectangle(hoverBrush, _xButtonBounds);
+                g.FillRectangle(SkinManager.BackgroundHoverRedBrush, _xButtonBounds);
 
             if (_buttonState == ButtonState.XDown && ControlBox)
-                g.FillRectangle(downBrush, _xButtonBounds);
+                g.FillRectangle(SkinManager.BackgroundDownRedBrush, _xButtonBounds);
 
             using (var formButtonsPen = new Pen(SkinManager.ColorScheme.TextColor, 2))
             {
@@ -895,6 +948,12 @@
             // Drawer Icon
             if (DrawerTabControl != null)
             {
+                if (_buttonState == ButtonState.DrawerOver)
+                    g.FillRectangle(hoverBrush, _drawerButtonBounds);
+
+                if (_buttonState == ButtonState.DrawerDown)
+                    g.FillRectangle(downBrush, _drawerButtonBounds);
+
                 _drawerIconRect = new Rectangle(SkinManager.FORM_PADDING / 2, STATUS_BAR_HEIGHT, 24 + SkinManager.FORM_PADDING + SkinManager.FORM_PADDING / 2, ACTION_BAR_HEIGHT);
                 // Ripple
                 if (_clickAnimManager.IsAnimating())
@@ -938,15 +997,18 @@
                 }
             }
 
-            //Form title
-            using (NativeTextRenderer NativeText = new NativeTextRenderer(g))
+            if (ControlBox==true)
             {
-                Rectangle textLocation = new Rectangle(SkinManager.FORM_PADDING + (DrawerTabControl != null ? 24 + (int)(SkinManager.FORM_PADDING * 1.5) : 0), STATUS_BAR_HEIGHT, Width, ACTION_BAR_HEIGHT);
-                NativeText.DrawTransparentText(Text, SkinManager.getLogFontByType(MaterialSkinManager.fontType.H6),
-                    SkinManager.ColorScheme.TextColor,
-                    textLocation.Location,
-                    textLocation.Size,
-                    NativeTextRenderer.TextAlignFlags.Left | NativeTextRenderer.TextAlignFlags.Middle);
+                //Form title
+                using (NativeTextRenderer NativeText = new NativeTextRenderer(g))
+                {
+                    Rectangle textLocation = new Rectangle(SkinManager.FORM_PADDING + (DrawerTabControl != null ? 24 + (int)(SkinManager.FORM_PADDING * 1.5) : 0), STATUS_BAR_HEIGHT, Width, ACTION_BAR_HEIGHT);
+                    NativeText.DrawTransparentText(Text, SkinManager.getLogFontByType(MaterialSkinManager.fontType.H6),
+                        SkinManager.ColorScheme.TextColor,
+                        textLocation.Location,
+                        textLocation.Size,
+                        NativeTextRenderer.TextAlignFlags.Left | NativeTextRenderer.TextAlignFlags.Middle);
+                }
             }
         }
 

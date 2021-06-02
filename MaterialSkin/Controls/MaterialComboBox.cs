@@ -5,6 +5,7 @@
     using System.ComponentModel;
     using System.Drawing;
     using System.Linq;
+    using System.Data;
     using System.Windows.Forms;
 
     public class MaterialComboBox : ComboBox, IMaterialControl
@@ -52,7 +53,7 @@
 
         private string _hint = string.Empty;
 
-        [Category("Material Skin"), DefaultValue("")]
+        [Category("Material Skin"), DefaultValue(""), Localizable(true)]
         public string Hint
         {
             get { return _hint; }
@@ -60,6 +61,24 @@
             {
                 _hint = value;
                 hasHint = !String.IsNullOrEmpty(Hint);
+                Invalidate();
+            }
+        }
+
+        private int _startIndex;
+        public int StartIndex
+        {
+            get => _startIndex;
+            set
+            {
+                _startIndex = value;
+                try
+                {
+                    base.SelectedIndex = value;
+                }
+                catch
+                {
+                }
                 Invalidate();
             }
         }
@@ -98,7 +117,7 @@
                 AnimationType = AnimationType.EaseInOut
             };
             _animationManager.OnAnimationProgress += sender => Invalidate();
-
+            _animationManager.OnAnimationFinished += sender => _animationManager.SetProgress(0);
             DropDownClosed += (sender, args) =>
             {
                 MouseState = MouseState.OUT;
@@ -116,6 +135,7 @@
             GotFocus += (sender, args) =>
             {
                 _animationManager.StartNewAnimation(AnimationDirection.In);
+                Invalidate();
             };
             MouseEnter += (sender, args) =>
             {
@@ -266,7 +286,16 @@
             string Text = "";
             if (!string.IsNullOrWhiteSpace(DisplayMember))
             {
-                Text = Items[e.Index].GetType().GetProperty(DisplayMember).GetValue(Items[e.Index], null).ToString();
+                if (!Items[e.Index].GetType().Equals(typeof(DataRowView)))
+                {
+                    var item = Items[e.Index].GetType().GetProperty(DisplayMember).GetValue(Items[e.Index]);
+                    Text = item.ToString();
+                }
+                else
+                {
+                    var table = ((DataRow)Items[e.Index].GetType().GetProperty("Row").GetValue(Items[e.Index])).Table;
+                    Text = table.Rows[e.Index][DisplayMember].ToString();
+                }
             }
             else
             {
@@ -278,7 +307,7 @@
                 NativeText.DrawTransparentText(
                 Text,
                 SkinManager.getFontByType(MaterialSkinManager.fontType.Subtitle1),
-                SkinManager.TextHighEmphasisColor,
+                SkinManager.TextHighEmphasisNoAlphaColor,
                 new Point(e.Bounds.Location.X + SkinManager.FORM_PADDING, e.Bounds.Location.Y),
                 new Size(e.Bounds.Size.Width - SkinManager.FORM_PADDING * 2, e.Bounds.Size.Height),
                 NativeTextRenderer.TextAlignFlags.Left | NativeTextRenderer.TextAlignFlags.Middle); ;
